@@ -1,1 +1,1 @@
-## keysentry server
+MCP server
