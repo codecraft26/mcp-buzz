@@ -1,25 +1,54 @@
-import dotenv from "dotenv";
-import fs from "fs";
-import app from "./app";
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { z } from 'zod';
 
-// Load base environment variables
-dotenv.config({ path: ".env" });
+const mcpServer = new McpServer({
+    name: 'tools-with-sample-server',
+    version: '1.0.0'
+});
 
-// Load environment-specific variables if applicable
-const environment = process.env.environment?.trim() || "";
-const envFilePath = `.env.${environment}`;
+// Tool that uses LLM sampling to summarize any text
+mcpServer.registerTool(
+    'summarize',
+    {
+        description: 'Summarize any text using an LLM',
+        inputSchema: {
+            text: z.string().describe('Text to summarize')
+        }
+    },
+    async ({ text }) => {
+        // Call the LLM through MCP sampling
+        const response = await mcpServer.server.createMessage({
+            messages: [
+                {
+                    role: 'user',
+                    content: {
+                        type: 'text',
+                        text: `Please summarize the following text concisely:\n\n${text}`
+                    }
+                }
+            ],
+            maxTokens: 500
+        });
 
-if (environment && fs.existsSync(envFilePath)) {
-  dotenv.config({ path: envFilePath });
-  console.log(`Loaded environment variables from ${envFilePath}`);
-} else {
-  console.warn(`Environment-specific .env file not found: ${envFilePath}`);
+        return {
+            content: [
+                {
+                    type: 'text',
+                    text: response.content.type === 'text' ? response.content.text : 'Unable to generate summary'
+                }
+            ]
+        };
+    }
+);
+
+async function main() {
+    const transport = new StdioServerTransport();
+    await mcpServer.connect(transport);
+    console.error('MCP server is running...');
 }
 
-// Fetch PORT safely
-const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-
-// Start server
-app.listen(port, () => {
-  console.log(`Server is running at http://localhost:${port}`);
+main().catch(error => {
+    console.error('Server error:', error);
+    process.exit(1);
 });
